@@ -1,7 +1,11 @@
+from datetime import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from pypdf import PdfReader
 from docx import Document
+import requests
+
+question: str = ""
 
 
 class AgentState(TypedDict):
@@ -11,7 +15,8 @@ class AgentState(TypedDict):
 
 
 def analyse_node(state):
-    print("Analyse de la question...")
+    question = state["question"]
+    print("[LOG] Question reçue :", question)
     return state
 
 
@@ -33,8 +38,11 @@ def decision_node(state):
         state["type_question"] = "docx"
     elif ".txt" in question:
         state["type_question"] = "txt"
-    else:
+    elif ".txt" == str:
         state["type_question"] = "documentation"
+    else:
+        "[LOG] Outil sélectionné :",
+    state["type_question"]
     return state
 
 
@@ -50,7 +58,14 @@ def calculatrice(expression):
 
 
 def documentation_node(state):
-    state["reponse"] = "Réponse documentaire"
+    question = state["question"]
+    prompt = f"""
+    Historique :{historique}
+    Question :{question}
+    Réponse :
+    """
+    reponse = llm_local(prompt)
+    state["reponse"] = reponse
     return state
 
 
@@ -60,25 +75,40 @@ def greeting_node(state):
 
 
 def txt_reader(chemin_fichier):
-    with open(chemin_fichier, "r", encoding="utf-8") as fichier:
-        contenu = fichier.read()
-    return contenu
+    try:
+        with open(chemin_fichier, "r", encoding="utf-8") as fichier:
+            return fichier.read()
+    except:
+        return "Fichier introuvable."
 
 
 def pdf_reader(chemin_fichier):
-    lecteur = PdfReader(chemin_fichier)
-    contenu = ""
-    for page in lecteur.pages:
-        contenu += page.extract_text()
-    return contenu
+    try:
+        lecteur = PdfReader(chemin_fichier)
+        contenu = ""
+        for page in lecteur.pages:
+            contenu += page.extract_text()
+        return contenu
+    except:
+        return "Fichier introuvable."
 
 
 def docx_reader(chemin_fichier):
-    doc = Document(chemin_fichier)
-    contenu = ""
-    for paragraphe in doc.paragraphs:
-        contenu += paragraphe.text + "\n"
-    return contenu
+    try:
+        doc = Document(chemin_fichier)
+        contenu = ""
+        for paragraphe in doc.paragraphs:
+            contenu += paragraphe.text + "\n"
+        return contenu
+    except:
+        return "Fichier introuvable."
+
+
+def llm_local(prompt):
+    url = "http://localhost:11434/api/generate"
+    data = {"model": "mistral", "prompt": prompt, "stream": False}
+    response = requests.post(url, json=data)
+    return response.json()["response"]
 
 
 def route_question(state):
@@ -87,19 +117,41 @@ def route_question(state):
 
 def txt_reader_node(state):
     contenu = txt_reader("documents/rh.txt")
-    state["reponse"] = contenu
+    question = state["question"]
+    prompt = f"""
+    Historique :{historique}
+    Contexte :{contenu}
+    Question :{question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(prompt)
     return state
 
 
 def pdf_reader_node(state):
     contenu = pdf_reader("documents/formation.pdf")
-    state["reponse"] = contenu
+    question = state["question"]
+    prompt = f"""
+    Historique :{historique}
+    Contexte :{contenu}
+    Question :{question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(prompt)
     return state
 
 
 def docx_reader_node(state):
     contenu = docx_reader("documents/procedure.docx")
-    state["reponse"] = contenu
+    question = state["question"]
+
+    prompt = f"""
+    Historique :{historique}
+    Contexte :{contenu}
+    Question :{question}
+    Réponse :
+    """
+    state["reponse"] = llm_local(prompt)
     return state
 
 
@@ -141,7 +193,10 @@ workflow.add_edge("pdf_reader", END)
 workflow.add_edge("docx_reader", END)
 
 agent = workflow.compile()
-
+memoire = []
+historique = "\n".join(memoire)
+if question == "":
+    print("Veuillez saisir une question.")
 # resultat = agent.invoke({"question":"Combien font 5+5 ?"})
 # resultat = agent.invoke({"question":"Quels sont les congés ?"})
 # resultat = agent.invoke({"question":"Combien font cinq plus trois ?"})
@@ -157,7 +212,43 @@ agent = workflow.compile()
 # print(pdf_reader("documents/formation.pdf"))
 # print(docx_reader("documents/procedure.docx"))
 # resultat = agent.invoke({"question": "50+25"})
-#resultat = agent.invoke({"question": "Lis formation.pdf"})
-#resultat = agent.invoke({"question": "Lis procedure.docx"})
-resultat = agent.invoke({"question": "Lis rh.txt"})
+# resultat = agent.invoke({"question": "Lis formation.pdf"})
+# resultat = agent.invoke({"question": "Lis procedure.docx"})
+# resultat = agent.invoke({"question": "Lis rh.txt"})
+# print(resultat["reponse"])
+print(llm_local("Bonjour"))
+# resultat = agent.invoke({"question": "Qu'est-ce qu'un Agent IA ?"})
+# resultat = agent.invoke({"question": "Lis formation.pdf"})
+# resultat = agent.invoke({"question": "Quels sujets sont étudiés ?"})
+# resultat = agent.invoke({"question": "Lis procedure.docx"})
+# resultat = agent.invoke({"question": "Que dit la procédure RH ?"})
+debut = time.time()
+resultat = agent.invoke({"question": question})
+fin = time.time()
+print("Temps :", fin - debut, "secondes")
+print("[LOG] Réponse générée")
 print(resultat["reponse"])
+memoire.append(f"Utilisateur : {question}")
+memoire.append(f"Assistant : {reponse}")
+questions = [
+    "Quels sont les congés ?",
+    "Lis formation.pdf",
+    "50+20",
+    "Lis procedure.docx",
+]
+memoire = []
+for question in questions:
+    if question == "":
+        print("Veuillez saisir une question.")
+        continue
+    historique = "\n".join(memoire)
+    debut = time.time()
+    resultat = agent.invoke({"question": question})
+    fin = time.time()
+    reponse = resultat["reponse"]
+    memoire.append(f"Utilisateur : {question}")
+    memoire.append(f"Assistant : {reponse}")
+    print(reponse)
+    print("[LOG] Réponse générée")
+    print("Temps :", fin - debut, "secondes")
+    print("-------------")
