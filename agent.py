@@ -26,18 +26,27 @@ def decision_node(state):
     if "bonjour" in question:
         state["type_question"] = "salutation"
     elif "+" in question or "-" in question or "*" in question or "/" in question:
-
         state["type_question"] = "calcul"
-    elif "lis" in question:
-        state["type_question"] = "lecture"
+    elif ".pdf" in question:
+        state["type_question"] = "pdf"
+    elif ".docx" in question:
+        state["type_question"] = "docx"
+    elif ".txt" in question:
+        state["type_question"] = "txt"
     else:
         state["type_question"] = "documentation"
     return state
 
 
 def calculatrice_node(state):
-    state["reponse"] = "Résultat du calcul"
+    question = state["question"]
+    resultat = calculatrice(question)
+    state["reponse"] = str(resultat)
     return state
+
+
+def calculatrice(expression):
+    return eval(expression)
 
 
 def documentation_node(state):
@@ -56,12 +65,40 @@ def txt_reader(chemin_fichier):
     return contenu
 
 
+def pdf_reader(chemin_fichier):
+    lecteur = PdfReader(chemin_fichier)
+    contenu = ""
+    for page in lecteur.pages:
+        contenu += page.extract_text()
+    return contenu
+
+
+def docx_reader(chemin_fichier):
+    doc = Document(chemin_fichier)
+    contenu = ""
+    for paragraphe in doc.paragraphs:
+        contenu += paragraphe.text + "\n"
+    return contenu
+
+
 def route_question(state):
     return state["type_question"]
 
 
 def txt_reader_node(state):
     contenu = txt_reader("documents/rh.txt")
+    state["reponse"] = contenu
+    return state
+
+
+def pdf_reader_node(state):
+    contenu = pdf_reader("documents/formation.pdf")
+    state["reponse"] = contenu
+    return state
+
+
+def docx_reader_node(state):
+    contenu = docx_reader("documents/procedure.docx")
     state["reponse"] = contenu
     return state
 
@@ -73,12 +110,19 @@ workflow.add_node("salutation", greeting_node)
 workflow.add_node("decision", decision_node)
 workflow.add_node("calculatrice", calculatrice_node)
 workflow.add_node("documentation", documentation_node)
+workflow.add_node("txt_reader", txt_reader_node)
+workflow.add_node("pdf_reader", pdf_reader_node)
+workflow.add_node("docx_reader", docx_reader_node)
+
+
 workflow.add_conditional_edges(
     "decision",
     route_question,
     {
-        "salutation": "salutation",
         "calcul": "calculatrice",
+        "pdf": "pdf_reader",
+        "docx": "docx_reader",
+        "txt": "txt_reader",
         "documentation": "documentation",
     },
 )
@@ -92,14 +136,28 @@ workflow.add_edge("documentation", END)
 workflow.add_edge("calculatrice", END)
 
 workflow.add_edge("salutation", END)
-
+workflow.add_edge("txt_reader", END)
+workflow.add_edge("pdf_reader", END)
+workflow.add_edge("docx_reader", END)
 
 agent = workflow.compile()
 
-#resultat = agent.invoke({"question":"Combien font 5+5 ?"})
-#resultat = agent.invoke({"question":"Quels sont les congés ?"})
-#resultat = agent.invoke({"question":"Combien font cinq plus trois ?"})
-#resultat = agent.invoke({"question":"Bonjour, comment vas-tu ?"})
-resultat = agent.invoke({"question": "Lecture du fichier RH ?"})
-print(txt_reader("documents/rh.txt"))
-print(resultat)
+# resultat = agent.invoke({"question":"Combien font 5+5 ?"})
+# resultat = agent.invoke({"question":"Quels sont les congés ?"})
+# resultat = agent.invoke({"question":"Combien font cinq plus trois ?"})
+# resultat = agent.invoke({"question":"Bonjour, comment vas-tu ?"})
+# print(calculatrice("100/4"))
+# resultat = agent.invoke({"question": "5+5"})
+# resultat = agent.invoke({"question": "50*4"})
+# resultat = agent.invoke({"question": "100/2"})
+# print(resultat)
+# resultat = agent.invoke({"question": "Lis le fichier RH "})
+# print(txt_reader("documents/rh.txt"))
+# print(resultat["reponse"])
+# print(pdf_reader("documents/formation.pdf"))
+# print(docx_reader("documents/procedure.docx"))
+# resultat = agent.invoke({"question": "50+25"})
+#resultat = agent.invoke({"question": "Lis formation.pdf"})
+#resultat = agent.invoke({"question": "Lis procedure.docx"})
+resultat = agent.invoke({"question": "Lis rh.txt"})
+print(resultat["reponse"])
